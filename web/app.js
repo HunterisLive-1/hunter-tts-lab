@@ -425,7 +425,10 @@ const studio = {
       store.set("text", out.text);
       const box = document.getElementById("script");
       if (box) box.value = out.text;
-      toast("Script polished. Read it once before making the voice.");
+      toast(out.switched_to
+        ? "Script polished with " + out.switched_to + ": the model you had picked was not available just now, so the app switched."
+        : "Script polished. Read it once before making the voice.");
+      if (out.switched_to) refresh();
     }
     this.update();
   },

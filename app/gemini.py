@@ -14,6 +14,11 @@ import urllib.request
 
 from jobs import UserError
 
+class ModelUnavailable(UserError):
+    """This model cannot be used right now (its free limit is used up, or Google
+    withdrew it). Another model may well work, so the caller can try one."""
+
+
 API = "https://generativelanguage.googleapis.com/v1beta"
 MAX_INPUT = 12000
 
@@ -40,9 +45,9 @@ def _call(key: str, path: str, body: dict | None = None, timeout: float = 90):
         if e.code in (400, 401, 403) and re.search(r"api key|permission|credential|unauthori", said, re.I):
             raise UserError("Google did not accept this API key. Check that it was copied whole, with no spaces.") from e
         if e.code == 429:
-            raise UserError("This model's free limit is used up for now. Wait a minute, or pick another model in Settings.") from e
+            raise ModelUnavailable("This model's free limit is used up for now. Wait a minute, or pick another model in Settings.") from e
         if e.code == 404:
-            raise UserError("Google no longer offers this model. Pick another one in Settings.") from e
+            raise ModelUnavailable("Google no longer offers this model. Pick another one in Settings.") from e
         if e.code >= 500:
             raise UserError("Google's service is having trouble right now. Try again in a minute.") from e
         raise UserError(f"Google refused the request: {said[:200] or e.code}") from e

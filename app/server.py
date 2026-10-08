@@ -329,7 +329,22 @@ class Handler(BaseHTTPRequestHandler):
                 raise UserError("Pick a Gemini model in Settings first.")
             script = data.get("script") if data.get("script") in ("keep", "devanagari", "english") else "keep"
             store.update(paths.CONFIG, {}, lambda c: {**c, "script": script})
-            return {"text": gemini.polish(cfg["gemini_key"], cfg["gemini_model"], str(data.get("text") or ""), script)}
+            text = str(data.get("text") or "")
+            try:
+                return {"text": gemini.polish(cfg["gemini_key"], cfg["gemini_model"], text, script)}
+            except gemini.ModelUnavailable as first:
+                # Which models are free, and how much, is Google's to decide and it
+                # changes. Rather than send the user to Settings, try the next
+                # usually-free ones and remember the one that answered.
+                others = [m for m in gemini.list_models(cfg["gemini_key"]) if m["free"] and m["id"] != cfg["gemini_model"]][:3]
+                for m in others:
+                    try:
+                        out = gemini.polish(cfg["gemini_key"], m["id"], text, script)
+                    except gemini.ModelUnavailable:
+                        continue
+                    store.update(paths.CONFIG, {}, lambda c, pick=m["id"]: {**c, "gemini_model": pick})
+                    return {"text": out, "switched_to": m["name"]}
+                raise first
         if path == "/api/open":
             folder = {"outputs": paths.OUTPUTS, "data": paths.DATA}.get(str(data.get("what")))
             if folder is None:

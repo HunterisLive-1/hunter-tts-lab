@@ -89,8 +89,9 @@ share of the given words came back correct, over 5 Hindi and Hinglish texts.
 3. In the Studio, press **Polish script**.
 
 The key is stored in the app's `data` folder on your PC and is sent only to
-Google. Google decides which models are free and how much you can use them;
-if one says its limit is used up, pick another.
+Google. Google decides which models are free and how much you can use them.
+If the model you picked has run out of its free limit, the app tries the
+next free one by itself and remembers the one that answered.
 
 ## Your files
 
