@@ -1,0 +1,10 @@
+# Plain line endings everywhere, so a file is the same on every PC.
+* text=auto eol=lf
+
+# The start file must keep its Windows line endings exactly as committed,
+# also inside the ZIP that GitHub builds: cmd.exe can lose track of labels
+# in a batch file with Unix line endings.
+*.bat -text
+
+*.wav binary
+*.png binary

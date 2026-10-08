@@ -1,0 +1,11 @@
+# Everything the app downloads or creates on a user's PC
+data/
+runtime/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local test leftovers
+.token
+server.log

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="app-token" content="{{TOKEN}}">
+<meta name="app-version" content="{{VERSION}}">
+<meta name="color-scheme" content="dark light">
+<title>Hunter TTS Lab</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="rail" aria-label="Hunter TTS Lab">
+    <a class="brand" href="#studio" aria-label="Hunter TTS Lab, home">
+      <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+        <rect width="48" height="48" rx="11" fill="var(--genda)"/>
+        <g fill="var(--neel-ink)">
+          <rect x="8" y="20" width="4" height="8" rx="2"/><rect x="15" y="13" width="4" height="22" rx="2"/>
+          <rect x="22" y="8" width="4" height="32" rx="2"/><rect x="29" y="15" width="4" height="18" rx="2"/>
+          <rect x="36" y="21" width="4" height="6" rx="2"/>
+        </g>
+      </svg>
+      <span class="brand-words"><b>Hunter TTS Lab</b><small>by The Hunter AI</small></span>
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#studio" data-view="studio">Studio</a>
+      <a href="#voices" data-view="voices">Voices</a>
+      <a href="#models" data-view="models">Models</a>
+      <a href="#settings" data-view="settings">Settings</a>
+    </nav>
+    <div class="rail-foot">
+      <div class="pc-chip" id="pc-chip" hidden></div>
+      <a class="subscribe" id="subscribe" href="https://www.youtube.com/@TheHunter-AI" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>
+        <span>Subscribe on YouTube</span>
+      </a>
+      <button class="theme" id="theme" type="button">Light look</button>
+    </div>
+  </aside>
+  <main class="main" id="main" tabindex="-1">
+    <p class="loading">Starting up</p>
+  </main>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<noscript>This app needs JavaScript switched on in the browser.</noscript>
+<script src="/app.js"></script>
+</body>
+</html>
