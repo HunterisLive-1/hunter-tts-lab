@@ -20,8 +20,13 @@ def gpu(name, vram, vendor="nvidia", driver="616.92", integrated=False):
     return {"name": name, "vendor": vendor, "vram_gb": vram, "driver": driver, "integrated": integrated}
 
 
-def levels(plan):
-    return {m["id"]: m["level"] for m in plan["models"]}
+def levels(plan, optional=False):
+    """How well each model fits. The two main models, unless the optional one is asked for too."""
+    return {m["id"]: m["level"] for m in plan["models"] if optional or m["id"] != "omnivoice"}
+
+
+def model(plan, model_id):
+    return next(m for m in plan["models"] if m["id"] == model_id)
 
 
 class Recommend(unittest.TestCase):
@@ -90,6 +95,62 @@ class Recommend(unittest.TestCase):
     def test_low_disk_is_mentioned(self):
         p = recommend.plan(pc(16, [], disk=3.0))
         self.assertTrue(any("free on this drive" in n for n in p["notes"]))
+
+
+class OmniVoice(unittest.TestCase):
+    """The optional model that runs on PyTorch: NVIDIA or the processor, nothing in between."""
+
+    def test_it_is_never_the_pick(self):
+        for hw in (pc(32, [gpu("NVIDIA GeForce RTX 5060 Ti", 15.9)]), pc(16, [gpu("NVIDIA GeForce GTX 1650", 4.0)]), pc(16, []), pc(8, [])):
+            p = recommend.plan(hw)
+            self.assertNotEqual(p["pick"], "omnivoice")
+            self.assertFalse(model(p, "omnivoice")["recommended"])
+
+    def test_50_series_gets_the_newest_pytorch_only(self):
+        p = recommend.plan(pc(32, [gpu("NVIDIA GeForce RTX 5060 Ti", 15.9)]))
+        self.assertEqual(p["torch_runtimes"], ["torch-cu128", "torch-cpu"])
+        self.assertEqual(model(p, "omnivoice")["level"], "good")
+        self.assertEqual(model(p, "omnivoice")["device"], "cuda")
+
+    def test_old_card_gets_the_older_pytorch(self):
+        p = recommend.plan(pc(16, [gpu("NVIDIA GeForce GTX 1070", 8.0, driver="581.10")]))
+        self.assertEqual(p["torch_runtimes"], ["torch-cu126", "torch-cpu"])
+
+    def test_old_driver_gets_the_older_pytorch(self):
+        p = recommend.plan(pc(16, [gpu("NVIDIA GeForce RTX 3060", 12.0, driver="552.22")]))
+        self.assertEqual(p["torch_runtimes"], ["torch-cu126", "torch-cpu"])
+
+    def test_a_card_in_between_tries_both(self):
+        p = recommend.plan(pc(16, [gpu("NVIDIA GeForce RTX 3060", 12.0)]))
+        self.assertEqual(p["torch_runtimes"], ["torch-cu128", "torch-cu126", "torch-cpu"])
+
+    def test_4gb_card_fits_it_when_it_only_just_fits_chatterbox(self):
+        p = recommend.plan(pc(16, [gpu("NVIDIA GeForce GTX 1650", 4.0)]))
+        self.assertEqual(levels(p, optional=True), {"chatterbox": "tight", "voxcpm2": "no", "omnivoice": "tight"})
+
+    def test_amd_card_runs_it_on_the_processor_and_says_so(self):
+        p = recommend.plan(pc(16, [gpu("AMD Radeon RX 6600", 8.0, vendor="amd", driver="31.0")]))
+        self.assertEqual(p["device"], "vulkan")
+        self.assertEqual(p["torch_runtimes"], ["torch-cpu"])
+        m = model(p, "omnivoice")
+        self.assertEqual(m["device"], "cpu")
+        self.assertEqual(m["unit"], "RAM")  # judged by the PC's memory, not the card's
+        self.assertIn("processor", m["speed_guess"])
+
+    def test_processor_only_pcs(self):
+        self.assertEqual(model(recommend.plan(pc(16, [])), "omnivoice")["level"], "good")
+        self.assertEqual(model(recommend.plan(pc(8, [])), "omnivoice")["level"], "tight")
+        self.assertEqual(model(recommend.plan(pc(4, [])), "omnivoice")["level"], "no")
+
+    def test_forcing_the_processor_applies_to_it_too(self):
+        p = recommend.plan(pc(32, [gpu("NVIDIA GeForce RTX 4090", 24.0)]), prefer="cpu")
+        self.assertEqual(p["torch_runtimes"], ["torch-cpu"])
+
+    def test_a_small_card_that_fits_only_it_does_not_keep_the_other_two_on_the_card(self):
+        # 3.6 GB: too small for Chatterbox and VoxCPM2, so the PC as a whole goes to the processor.
+        p = recommend.plan(pc(16, [gpu("NVIDIA GeForce GTX 1050", 3.6)]))
+        self.assertEqual(p["device"], "cpu")
+        self.assertEqual(p["torch_runtimes"], ["torch-cpu"])
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ CONFIG = DATA / "config.json"
 HISTORY = DATA / "history.json"
 VOICE_INDEX = DATA / "voices.json"
 INSTALLED = DATA / "installed.json"
+HEARD = DATA / "heard.json"  # what each voice recording says, written down once for OmniVoice
 
 
 def ensure() -> None:

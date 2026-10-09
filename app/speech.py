@@ -143,12 +143,15 @@ def generate(job, text: str, voice_id: str, model_id: str, language: str) -> dic
     clip_id = time.strftime("%Y%m%d-%H%M%S-") + secrets.token_hex(3)
     work = paths.DOWNLOADS / f"job-{clip_id}"
     work.mkdir(parents=True, exist_ok=True)
-    started, parts = time.time(), []
+    started, parts, worked = time.time(), [], 0.0
     try:
         for n, piece in enumerate(pieces):
-            job.report(n / len(pieces), f"Speaking part {n + 1} of {len(pieces)}" if len(pieces) > 1 else "Speaking")
+            words = f"Speaking part {n + 1} of {len(pieces)}" if len(pieces) > 1 else "Speaking"
+            job.report(n / len(pieces), words)
             part = work / f"{n:04d}.wav"
-            engines.speak(rt, model_id, piece, part, voice, language, job.cancelled)
+            made = engines.speak(rt, model_id, piece, part, voice, language, job.cancelled, status=lambda say, words=words: job.report(detail=say or words))
+            # "work" leaves out a model's one-time start, where the engine reports it.
+            worked += made.get("work") or made["seconds"]
             parts.append(part)
         job.report(0.99, "Joining the parts" if len(parts) > 1 else "Saving")
         out = paths.OUTPUTS / f"{clip_id}.wav"
@@ -189,7 +192,7 @@ def generate(job, text: str, voice_id: str, model_id: str, language: str) -> dic
         def note(data: dict) -> dict:
             m = data.setdefault("models", {}).get(model_id)
             if m:
-                now = took / audio * 10
+                now = worked / audio * 10
                 m["per10"] = round(now if not m.get("per10") else m["per10"] * 0.6 + now * 0.4, 1)
             return data
 

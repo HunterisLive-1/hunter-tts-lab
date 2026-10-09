@@ -39,7 +39,8 @@ def _cpu_feature(number: int) -> bool:
         return False
 
 
-def _ram_gb() -> float:
+def _ram_gb(free: bool = False) -> float:
+    """The PC's memory in GB; with free=True, how much of it nothing is using right now."""
     try:
 
         class MemStatus(ctypes.Structure):
@@ -51,10 +52,15 @@ def _ram_gb() -> float:
         ms = MemStatus()
         ms.dwLength = ctypes.sizeof(MemStatus)
         if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(ms)):
-            return round(ms.ullTotalPhys / 1024**3, 1)
+            return round((ms.ullAvailPhys if free else ms.ullTotalPhys) / 1024**3, 1)
     except (AttributeError, OSError):
         pass
     return 0.0
+
+
+def free_ram_gb() -> float:
+    """Memory nothing is using right now, in GB. 0.0 when it cannot be read."""
+    return _ram_gb(free=True)
 
 
 def _present_adapters() -> list[dict]:

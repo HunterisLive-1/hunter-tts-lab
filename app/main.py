@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import brand  # noqa: E402
+import omni_engine  # noqa: E402
 import paths  # noqa: E402
 import server  # noqa: E402
 
@@ -76,6 +77,7 @@ def main() -> int:
         pass
     finally:
         httpd.server_close()
+        omni_engine.stop()
     return 0
 
 

@@ -269,12 +269,38 @@ const studio = {
     if (!S.voices.find((v) => v.id === ui.voice)) ui.voice = model && !model.needs_voice && ui.voice === "" && store.get("voice") === "" && store.get("picked") ? "" : (S.voices[0] ? S.voices[0].id : "");
     if (model && model.needs_voice && !ui.voice && S.voices[0]) ui.voice = S.voices[0].id;
 
-    // callout when nothing can be made yet
+    // callout when nothing can be made yet: one button installs the model that suits this PC
     const callout = document.getElementById("studio-callout");
-    callout.replaceChildren(ready.length || activeJobs("install").length ? "" : h("div", { class: "callout" },
-      h("p", {}, h("b", { text: "No model is installed yet." })),
-      h("p", { text: "A model is the part that speaks. Pick one that suits this PC and install it; it is a one-time download." }),
-      h("a", { class: "btn primary", href: "#models", text: "Choose a model" })));
+    const installing = activeJobs("install")[0];
+    const pick = S.plan && S.models.find((m) => m.id === S.plan.pick);
+    if (ready.length) callout.replaceChildren();
+    else if (installing) {
+      if (!callout.querySelector('[data-install="' + installing.id + '"]')) {
+        callout.replaceChildren(h("div", { class: "callout", "data-install": installing.id },
+          h("p", {}, h("b", { text: installing.title + ". " }), "This is a one-time download. You can write your script meanwhile."),
+          h("div", { class: "progress" },
+            h("div", { class: "row" },
+              h("span", { text: "Getting ready" }),
+              h("button", { class: "btn small", type: "button", text: "Cancel", onclick: () => attempt(() => api.post("/api/jobs/cancel", { id: installing.id })) })),
+            h("div", { class: "bar unknown" }, h("i")))));
+      }
+      this.updateInstall();
+    } else if (pick) {
+      callout.replaceChildren(h("div", { class: "callout" },
+        h("p", {}, h("b", { text: "One step before the first clip: install a voice model." })),
+        h("p", { text: pick.name + " suits this PC best. It is a one-time download of " + gb(pick.size_gb + pick.engine_gb) + "; the app sets it up and tests it by itself." }),
+        h("div", { class: "adder-ways" },
+          h("button", { class: "btn primary", type: "button", text: "Install " + pick.name, onclick: async (e) => {
+            e.target.disabled = true;
+            if (await attempt(() => api.post("/api/models/install", { id: pick.id }))) refresh(); else e.target.disabled = false;
+          } }),
+          h("a", { class: "btn quiet", href: "#models", text: "See all models" }))));
+    } else {
+      callout.replaceChildren(h("div", { class: "callout" },
+        h("p", {}, h("b", { text: "No model is installed yet." })),
+        h("p", { text: S.plan ? "A model is the part that speaks. See which ones this PC can run." : "Looking at this PC to see which model suits it." }),
+        S.plan ? h("a", { class: "btn primary", href: "#models", text: "Choose a model" }) : ""));
+    }
 
     // language
     document.getElementById("lang").replaceChildren(h("div", { class: "seg", role: "group", "aria-label": "Language of the script" },
@@ -347,6 +373,16 @@ const studio = {
       const voice = text.length / 16; // a spoken second is about 16 characters of script
       note.textContent = "About " + seconds(voice) + " of voice" + (model.per10 ? ", ready in about " + seconds(Math.max(2, voice * model.per10 / 10)) + " on this PC." : ".");
     }
+  },
+
+  /* The first install, watched from the Studio: only the words and the bar change. */
+  updateInstall() {
+    const job = activeJobs("install")[0];
+    const box = job && document.querySelector('[data-install="' + job.id + '"]');
+    if (!box) return;
+    box.querySelector(".progress span").textContent = job.status === "waiting" ? "Waiting its turn" : (job.detail || "Getting ready");
+    box.querySelector(".bar").classList.toggle("unknown", !job.progress);
+    box.querySelector(".bar i").style.width = Math.round((job.progress || 0) * 100) + "%";
   },
 
   updateProgress() {
@@ -671,6 +707,14 @@ const modelsView = {
           ...[["auto", "Best for this PC"], ["cpu", "Processor only"]].map(([id, label]) =>
             h("button", { type: "button", "aria-pressed": String(S.settings.device === id), disabled: busy, text: label, onclick: () => this.setDevice(id) }))),
         h("button", { class: "btn small quiet", type: "button", text: "Check this PC again", onclick: async () => { if (await attempt(() => api.post("/api/hardware/refresh"))) { await refresh(); toast("Checked."); } } })),
+      S.spare && S.spare.count ? h("p", { class: "note", style: "margin-top:8px" },
+        "The engine for the other choice is kept on this PC (about " + gb(S.spare.gb) + "), so switching back needs no download. ",
+        h("button", { class: "btn small quiet", type: "button", disabled: busy, text: "Free the space", onclick: async (e) => {
+          e.target.disabled = true;  // thousands of small files: deleting them takes up to a minute
+          e.target.textContent = "Freeing the space";
+          if (await attempt(() => api.post("/api/runtimes/clean"))) toast("Done. Switching back will download it again.");
+          refresh();
+        } })) : "",
       ...S.models.map((m) => this.row(m)));
   },
 
@@ -698,23 +742,27 @@ const modelsView = {
         } }));
     } else {
       side.append(
-        h("button", { class: "btn" + (fit.level === "no" ? "" : " primary"), type: "button", text: "Install", onclick: async () => {
+        h("button", { class: "btn" + (fit.level === "no" || m.optional ? "" : " primary"), type: "button", text: "Install", onclick: async () => {
           if (fit.level === "no" && !confirm(m.name + " needs more memory than this PC has, so it will probably fail or be very slow. Install it anyway?")) return;
           if (await attempt(() => api.post("/api/models/install", { id: m.id }))) refresh();
         } }),
-        h("p", { class: "note", text: gb(m.size_gb) + " download, plus the engine the first time." }),
+        h("p", { class: "note", text: gb(m.size_gb) + " download" + (!m.engine_gb ? "." : m.optional
+          ? ", plus " + gb(m.engine_gb) + " for its own Python and PyTorch."
+          : ", plus " + gb(m.engine_gb) + " for the engine.") }),
         failed ? h("p", { class: "note", style: "color:var(--signal)", text: failed.error }) : "");
     }
     const share = fit.have_gb ? Math.min(100, Math.round(fit.need_gb / fit.have_gb * 100)) : 100;
     return h("article", { class: "model" },
       h("div", {},
-        h("h3", {}, m.name, fit.recommended ? h("span", { class: "badge", text: "Best for this PC" }) : "", fit.level === "no" ? h("span", { class: "badge plain", text: "Too heavy for this PC" }) : ""),
+        h("h3", {}, m.name, fit.recommended ? h("span", { class: "badge", text: "Best for this PC" }) : "", m.optional ? h("span", { class: "badge plain", text: "Optional" }) : "",
+          fit.level === "no" ? h("span", { class: "badge plain", text: "Too heavy for this PC" }) : ""),
         h("p", { class: "by" }, "by " + m.by + ", " + m.license + " licence. ", h("a", { class: "link", href: m.home, target: "_blank", rel: "noopener", text: "About this model" })),
         h("p", { class: "summary", text: m.summary + " " + m.detail }),
         h("div", { class: "fit " + fit.level },
           h("div", { class: "track", role: "img", "aria-label": fit.why }, h("i", { style: "width:" + share + "%" })),
-          h("p", { text: fit.why + (m.installed ? "" : " " + fit.speed_guess) }))),
+          h("p", { text: (fit.aside ? fit.aside + " " : "") + fit.why + (m.installed ? "" : " " + fit.speed_guess) }))),
       side,
+      m.problem ? h("p", { class: "model-notes", style: "color:var(--signal)", text: m.problem + " Press Test again to retry." }) : "",
       m.notes.length ? h("p", { class: "model-notes", text: m.notes.join(" ") }) : "");
   },
 
@@ -735,7 +783,7 @@ const modelsView = {
 
   async setDevice(id) {
     if (S.settings.device === id) return;
-    if (installed().length && !confirm("Models that are installed will be set up again for this choice and tested. That needs a download. Continue?")) return;
+    if (installed().length && !confirm("Models that are installed will be set up again for this choice and tested. The first time, that needs a download. Continue?")) return;
     if (await attempt(() => api.post("/api/settings", { device: id }))) refresh();
   },
 };
@@ -801,7 +849,7 @@ const settingsView = {
       h("h2", { class: "section-title", text: "About" }),
       h("p", {}, h("b", { text: a.name + " " + a.version + ". " }), a.credit + "."),
       h("p", {}, "Tutorials and updates: ", h("a", { href: a.channel_url, target: "_blank", rel: "noopener", text: a.channel + " on YouTube" }), ". Source code: ", h("a", { href: a.repo_url, target: "_blank", rel: "noopener", text: "GitHub" }), "."),
-      h("p", { text: "Voices are made on this PC by the audio.cpp engine (ShugoAI, Apache 2.0) with the Chatterbox (Resemble AI, MIT) and VoxCPM2 (OpenBMB, Apache 2.0) models. Nothing you write or record leaves this PC, except a script you choose to polish, which goes to Google." }),
+      h("p", { text: "Voices are made on this PC by the audio.cpp engine (ShugoAI, Apache 2.0) with the Chatterbox (Resemble AI, MIT) and VoxCPM2 (OpenBMB, Apache 2.0) models. The optional OmniVoice model (k2-fsa) runs on PyTorch; its model files are free for non-commercial use (CC-BY-NC). Nothing you write or record leaves this PC, except a script you choose to polish, which goes to Google." }),
       h("p", { text: "Copy only your own voice, or a voice you have permission to copy." }));
   },
 
@@ -871,7 +919,7 @@ async function tick() {
     const finished = noticeJobs(data.jobs);
     if (S) S.jobs = data.jobs;
     if (finished || !S || !S.hw) await refresh();
-    else if (ui.view === "studio") { studio.updateProgress(); studio.updateGo(); }
+    else if (ui.view === "studio") { studio.updateProgress(); studio.updateGo(); studio.updateInstall(); }
     else if (ui.view === "models") modelsView.patch(data.jobs);
     if (data.jobs.some((j) => j.status === "running" || j.status === "waiting") || !S || !S.hw) wait = 600;
   } catch { wait = 4000; }

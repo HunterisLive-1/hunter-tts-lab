@@ -64,7 +64,30 @@ def runtime_order(hw: dict, device: str, gpu: dict | None) -> list[str]:
     return ["cuda13", "cuda12", "vulkan", "cpu"]
 
 
+def torch_order(hw: dict, device: str, gpu: dict | None) -> list[str]:
+    """The same for OmniVoice, which runs on PyTorch: NVIDIA or the processor, nothing in between."""
+    if device != "cuda":
+        return ["torch-cpu"]
+    name = (gpu or {}).get("name", "")
+    try:
+        driver = float(str((gpu or {}).get("driver", "0")).split(".")[0])
+    except ValueError:
+        driver = 0.0
+    # The newest PyTorch build has no code for the old cards, and wants a driver from 2025 or later.
+    if _old_nvidia(name) or 0 < driver < 570:
+        return ["torch-cu126", "torch-cpu"]
+    if re.search(r"rtx\s*50\d\d", name.lower()):  # and the older build has none for these
+        return ["torch-cu128", "torch-cpu"]
+    return ["torch-cu128", "torch-cu126", "torch-cpu"]
+
+
+def device_for(model_id: str, device: str) -> str:
+    """Where a model really runs when the PC's choice is `device`: one with no Vulkan build uses the processor there."""
+    return device if device in NEEDS[model_id] else "cpu"
+
+
 def fit(model_id: str, device: str, hw: dict, gpu: dict | None) -> dict:
+    device = device_for(model_id, device)
     need = NEEDS[model_id][device]
     if device == "cpu":
         have, want, unit = hw.get("ram_gb", 0.0), need["ram"], "RAM"
@@ -95,8 +118,9 @@ def plan(hw: dict, prefer: str = "auto") -> dict:
     def rate(dev: str, g: dict | None) -> dict:
         return {m: fit(m, dev, hw, g) for m in MODELS}
 
+    core = [m for m in MODELS if not MODELS[m].get("optional")]
     fits = rate(device, gpu)
-    if device != "cpu" and all(f["level"] == "no" for f in fits.values()):
+    if device != "cpu" and all(fits[m]["level"] == "no" for m in core):
         # A card that is found but too small for every model: use the processor.
         notes.append(f"{gpu['name']} has too little graphics memory for these models, so the processor is used.")
         device, gpu = "cpu", None
@@ -114,12 +138,17 @@ def plan(hw: dict, prefer: str = "auto") -> dict:
 
     models = []
     for m in MODELS:
-        guess = SPEED[m][device]
+        runs_on = device_for(m, device)
+        guess = SPEED[m][runs_on]
         models.append({
             "id": m,
             **fits[m],
             "recommended": m == pick,
-            "speed_guess": f"{speed_words(guess).capitalize()} on our test PC ({TEST_PC})." if device != "cpu"
+            "device": runs_on,
+            # Said out loud when a model does not follow the rest of the PC onto the graphics card.
+            "aside": f"{MODELS[m]['name']} runs on PyTorch, which drives only NVIDIA cards on Windows, so on this PC it uses the processor."
+            if runs_on != device else "",
+            "speed_guess": f"{speed_words(guess).capitalize()} on our test PC ({TEST_PC})." if runs_on != "cpu"
             else f"{speed_words(guess).capitalize()} on our test PC's processor ({TEST_PC.split(',')[0]}).",
         })  # fmt: skip
 
@@ -133,7 +162,7 @@ def plan(hw: dict, prefer: str = "auto") -> dict:
         if not hw.get("cpu", {}).get("avx2", True):
             notes.append("This processor is an older kind (no AVX2), so it will be slower still.")
     if pick is None:
-        notes.append("This PC has too little memory for either model. Closing other apps may help; 8 GB of RAM is the least that works.")
+        notes.append("This PC has too little memory for these models. Closing other apps may help; 8 GB of RAM is the least that works.")
     if hw.get("disk_free_gb", 99) < 6:
         notes.append(f"Only {hw['disk_free_gb']:g} GB is free on this drive. A model needs 3 to 4 GB.")
 
@@ -147,4 +176,5 @@ def plan(hw: dict, prefer: str = "auto") -> dict:
         "pick": pick,
         "models": models,
         "runtimes": runtime_order(hw, device, gpu),
+        "torch_runtimes": torch_order(hw, device, gpu),
     }

@@ -74,12 +74,14 @@ def state() -> dict:
         models.append({
             "id": mid, "name": m["name"], "by": m["by"], "license": m["license"], "home": m["home"],
             "summary": m["summary"], "detail": m["detail"], "size_gb": round(m["size"] / 1024**3, 1),
-            "needs_voice": m["needs_voice"], "installed": ready,
+            "engine_gb": round(engines.engine_bytes(_order(plan, mid)) / 1024**3, 1) if plan and not ready else 0,
+            "optional": bool(m.get("optional")), "needs_voice": m["needs_voice"], "installed": ready,
             "runtime": entry.get("runtime") if ready else None,
             "runs_on": RUNTIMES[entry["runtime"]]["on"] if ready else None,
             "device": RUNTIMES[entry["runtime"]]["backend"] if ready else None,
             "per10": entry.get("per10") if ready else None,
             "notes": entry.get("notes", []) if ready else [],
+            "problem": entry.get("problem", "") if ready else "",
             "fit": fits.get(mid),
         })  # fmt: skip
     key = cfg["gemini_key"]
@@ -89,6 +91,8 @@ def state() -> dict:
         "hw": hw,
         "plan": plan and {k: plan[k] for k in ("device", "device_label", "why", "headline", "notes", "pick")},
         "models": models,
+        # engines kept for the other choice of "Best for this PC / Processor only"
+        "spare": {"gb": round(sum(engines.runtime_disk_gb(rt) for rt in engines.spare_runtimes()), 1), "count": len(engines.spare_runtimes())},
         "voices": voices.all_voices(),
         "clips": speech.history()[:200],
         "settings": {"has_key": bool(key), "key_hint": ("…" + key[-4:]) if len(key) >= 8 else "", "gemini_model": cfg["gemini_model"],
@@ -96,6 +100,11 @@ def state() -> dict:
         "jobs": jobs.snapshot(),
         "limits": {"script": speech.MAX_SCRIPT, "voice_min": voices.MIN_SECONDS, "voice_max": voices.MAX_SECONDS},
     }  # fmt: skip
+
+
+def _order(plan: dict, model_id: str) -> list[str]:
+    """The ways of running this model on this PC, best first."""
+    return list(plan["torch_runtimes"] if engines.is_omni(model_id) else plan["runtimes"])
 
 
 def start_install(model_id: str) -> dict:
@@ -106,7 +115,7 @@ def start_install(model_id: str) -> dict:
     plan = current_plan()
     if plan is None:
         raise UserError("Still looking at this PC. Try again in a few seconds.")
-    order = list(plan["runtimes"])
+    order = _order(plan, model_id)
     job = jobs.submit("install", f"Installing {MODELS[model_id]['name']}", lambda j: engines.install_model(j, model_id, order), {"model": model_id})
     return {"job": job.id}
 
@@ -284,6 +293,11 @@ class Handler(BaseHTTPRequestHandler):
             if jobs.busy():
                 raise UserError("Something is still running. Wait for it to finish, or cancel it.")
             engines.remove_model(mid)
+            return {"ok": True}
+        if path == "/api/runtimes/clean":
+            if jobs.busy():
+                raise UserError("Something is still running. Wait for it to finish, or cancel it.")
+            engines.drop_spare_runtimes()
             return {"ok": True}
         if path == "/api/jobs/cancel":
             return {"ok": jobs.cancel(str(data.get("id")))}
