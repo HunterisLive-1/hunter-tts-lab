@@ -3,7 +3,8 @@
 **Built & customized by The Hunter AI** · [Subscribe on YouTube: The Hunter AI](https://www.youtube.com/@TheHunter-AI)
 
 Clone your own voice and make it read any script, on your own PC, for free.
-Hindi, Hinglish and English. It works with an NVIDIA graphics card, with an
+Hindi, Hinglish and English, and many more languages: Bengali, Tamil,
+Telugu, Marathi and the rest. It works with an NVIDIA graphics card, with an
 AMD or Intel card, and on a PC with no graphics card at all.
 
 ![The Studio: script, voice, model, make the voice](docs/studio.png)
@@ -74,6 +75,38 @@ Vulkan; it has not been tried on an AMD or Intel card yet.
 
 "Words right" means a speech-to-text service listened to the clips and that
 share of the given words came back correct, over 5 Hindi and Hinglish texts.
+
+## Languages
+
+Above the script box you choose the script's language: **Hindi or
+Hinglish**, **English**, or **Other**. Other opens a list of every language
+the installed models speak, Indian languages first. A model that does not
+speak the chosen language switches itself off, so a wrong pair cannot be
+picked.
+
+| Model | Languages |
+|---|---|
+| Chatterbox | 19: Arabic, Danish, Dutch, English, Finnish, French, German, Greek, Hindi, Italian, Korean, Malay, Norwegian, Polish, Portuguese, Spanish, Swahili, Swedish, Turkish |
+| VoxCPM2 | 30: those 19, and Burmese, Chinese, Hebrew, Indonesian, Japanese, Khmer, Lao, Russian, Tagalog, Thai, Vietnamese |
+| OmniVoice | 646, with Bengali, Tamil, Telugu, Marathi, Gujarati, Punjabi, Urdu, Kannada, Malayalam, Odia, Assamese and Nepali among them |
+
+Hindi is the only Indian language Chatterbox and VoxCPM2 speak. For any
+other Indian language, OmniVoice is the model.
+
+![Tamil chosen: the two models that do not speak it switch off](docs/languages.png)
+
+**What we tested.** Hindi, Hinglish and English are measured (the numbers
+above). For the rest we made one short clip in each of 49 languages through
+the app: every language of Chatterbox and VoxCPM2, and 21 Indian languages
+plus Arabic, Chinese, French and Japanese with OmniVoice. All 70 clips were
+made, and a speech-to-text service understood the 55 it could listen to
+(the other 15 are languages it does not know, such as Odia, Nepali and
+Khmer). That shows the language is spoken, not how good it sounds: try a
+short line before a long script.
+
+Chatterbox's makers list four more languages (Chinese, Hebrew, Japanese,
+Russian). The engine this app runs it on cannot prepare their text, so they
+are left out of its list; VoxCPM2 and OmniVoice speak all four.
 
 ## OmniVoice, the optional third model
 

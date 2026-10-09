@@ -1,7 +1,7 @@
 """The name and the credit line. Every screen, banner and page takes them from here."""
 
 NAME = "Hunter TTS Lab"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 CREDIT = "Built & customized by The Hunter AI"
 CHANNEL_NAME = "The Hunter AI"
 CHANNEL_URL = "https://www.youtube.com/@TheHunter-AI"

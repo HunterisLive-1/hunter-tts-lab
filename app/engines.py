@@ -20,6 +20,7 @@ import zipfile
 from pathlib import Path
 
 import hardware
+import languages
 import omni_engine
 import paths
 import store
@@ -206,7 +207,8 @@ _FAILURES = (
     # The engine asks Windows for memory and gets none: it stops with this line and nothing else.
     (r"mem_buffer != NULL|bad_alloc|not enough memory|Cannot allocate memory", OUT_OF_RAM),
     (r"out of memory|failed to allocate|alloc.*fail|CUDA_ERROR_OUT_OF_MEMORY|ErrorOutOfDeviceMemory", OUT_OF_VRAM),
-    (r"no CUDA|CUDA.*not (found|available)|cuda.*init|nvcuda|unsupported.*gpu|no kernel image", "The NVIDIA part of the engine could not start on this card or driver."),
+    (r"unsupported \w+ language", "This model cannot speak that language in this engine. Pick another model, or another language."),
+    (r"no CUDA|CUDA.*not (found|available)|CUDA.*init\w* failed|failed to init\w* CUDA|nvcuda|unsupported.*gpu|no kernel image", "The NVIDIA part of the engine could not start on this card or driver."),
     (r"vulkan.*(fail|not|error)|no.*vulkan", "Vulkan could not start on this graphics card."),
     (r"requires speaker reference", "This model needs a voice to copy. Pick a voice first."),
 )
@@ -217,11 +219,22 @@ def _explain(code: int, stderr: str) -> str:
         return "This processor is missing instructions the engine needs."
     if code == 0xC0000135:
         return "A library the engine needs is missing. Remove the model and install it again."
-    for pattern, message in _FAILURES:
-        if re.search(pattern, stderr, flags=re.IGNORECASE):
-            return message
+    # The engine's own last word comes first. Reading the whole log for a
+    # cause once blamed the graphics card for an unsupported language: the
+    # card's ordinary start-up line was in the log, and it matched.
+    reason = next((ln.split("audiocpp_cli failed:", 1)[1].strip() for ln in reversed(stderr.splitlines()) if "audiocpp_cli failed:" in ln), "")
+    for where in (reason, stderr):
+        for pattern, message in _FAILURES:
+            if where and re.search(pattern, where, flags=re.IGNORECASE):
+                return message
+        if reason:
+            # running out of memory is said on a line of its own, above the last word
+            for pattern, message in _FAILURES[:2]:
+                if re.search(pattern, stderr, flags=re.IGNORECASE):
+                    return message
+            return reason[:200]
     said = [ln.strip() for ln in stderr.splitlines() if "fail" in ln.lower() or "error" in ln.lower()]
-    return (said[-1][:200] if said else f"The engine stopped with code {code}.").replace("audiocpp_cli failed: ", "")
+    return said[-1][:200] if said else f"The engine stopped with code {code}."
 
 
 def passing(error: str | None) -> bool:
@@ -262,6 +275,7 @@ def speak(rt: str, model_id: str, text: str, out_wav: Path, voice: Path | None, 
     m, spec = MODELS[model_id], RUNTIMES[rt]
     if m["needs_voice"] and voice is None:
         raise UserError(f"{m['name']} needs a voice to copy. Pick a voice first.")
+    language = languages.given(model_id, language)  # the model's own name for it
     if is_omni(model_id):
         return omni_engine.speak(rt, text, out_wav, voice, language, cancelled, limit, status)
     omni_engine.stop()  # two models are never in memory together

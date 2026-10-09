@@ -117,14 +117,18 @@ _SCRIPTS = {
 }
 
 
-def polish(key: str, model: str, text: str, script: str = "keep") -> str:
+_OTHER = "The script is in {language}. Keep it in {language}, in the writing that language normally uses. Do not translate it."
+
+
+def polish(key: str, model: str, text: str, script: str = "keep", language: str | None = None) -> str:
+    """`language` is the name of the script's language when it is neither Hindi nor English."""
     text = text.strip()
     if not text:
         raise UserError("Write something to polish first.")
     if len(text) > MAX_INPUT:
         raise UserError(f"This script is too long to polish in one go ({len(text):,} characters). Polish it in parts of up to {MAX_INPUT:,}.")
     body = {
-        "systemInstruction": {"parts": [{"text": _RULES + "\n- " + _SCRIPTS.get(script, _SCRIPTS["keep"])}]},
+        "systemInstruction": {"parts": [{"text": _RULES + "\n- " + (_OTHER.format(language=language) if language else _SCRIPTS.get(script, _SCRIPTS["keep"]))}]},
         "contents": [{"role": "user", "parts": [{"text": text}]}],
         "generationConfig": {"temperature": 0.2},
     }

@@ -135,6 +135,9 @@ select { cursor: pointer; }
 .chip[aria-pressed="true"] { border-color: var(--genda); }
 .chip[aria-pressed="true"]::before { border-color: var(--genda); background: var(--genda); box-shadow: inset 0 0 0 2px var(--surface); }
 .chip.add { border-style: dashed; background: transparent; color: var(--soft); padding-left: 14px; }
+.chip.off { opacity: .5; cursor: not-allowed; }
+#lang { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.lang-pick { width: auto; max-width: 220px; min-height: 40px; padding: 6px 10px; }
 a.chip { text-decoration: none; }
 .chip.add::before { display: none; }
 .chip small { color: var(--soft); font-weight: 400; }

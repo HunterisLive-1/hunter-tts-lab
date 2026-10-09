@@ -181,7 +181,8 @@ MODELS: dict[str, dict] = {
         "sha256": "d586dd1aa59613cab8046176fb7ca5ba191c02a9b10ffa5b0d892ed22b470656",
         "needs_voice": True,
         "summary": "Light on memory. Clear in Hindi script.",
-        "detail": "Reads Hindi written in Devanagari best. For Hindi typed in English letters, polish the script first.",
+        "detail": "Reads Hindi written in Devanagari best. For Hindi typed in English letters, polish the script first. "
+                  "Speaks 19 languages; Hindi is the only Indian one.",
     },
     "voxcpm2": {
         "name": "VoxCPM2",
@@ -197,7 +198,8 @@ MODELS: dict[str, dict] = {
         "sha256": "c8e01ab4416011e12a28f24ede298a1aa5ce64b43f8e8aaad53b1e2fe7c96432",
         "needs_voice": False,
         "summary": "Best at Hinglish. Studio-quality sound, needs more memory.",
-        "detail": "Reads Hindi typed in English letters almost as well as Hindi script. 48 kHz output.",
+        "detail": "Reads Hindi typed in English letters almost as well as Hindi script. 48 kHz output. "
+                  "Speaks 30 languages; Hindi is the only Indian one.",
     },
     "omnivoice": {
         "name": "OmniVoice",
@@ -212,7 +214,8 @@ MODELS: dict[str, dict] = {
         "needs_voice": True,
         "summary": "The fastest on an NVIDIA card, and the lightest on graphics memory.",
         "detail": "A bigger setup than the other two: it brings its own Python and PyTorch, which the app installs into its own folder. "
-                  "On a processor it is the slowest of the three.",
+                  "On a processor it is the slowest of the three. Speaks 646 languages, with Bengali, Tamil, Telugu, Marathi, "
+                  "Gujarati, Punjabi, Urdu, Kannada and Malayalam among them.",
     },
 }  # fmt: skip
 

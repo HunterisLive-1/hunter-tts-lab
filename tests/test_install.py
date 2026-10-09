@@ -292,6 +292,24 @@ class Memory(unittest.TestCase):
         self.assertTrue(engines.passing(engines.OUT_OF_RAM) and engines.passing(engines.OUT_OF_VRAM))
         self.assertFalse(engines.passing("Vulkan could not start on this graphics card."))
 
+    def test_the_engines_own_last_word_wins_over_the_rest_of_its_log(self):
+        # Found with a Japanese script: the card's ordinary start-up line made this an "NVIDIA could not start".
+        log = chr(10).join((
+            "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 16283 MiB):",
+            "load_backend: loaded CUDA backend from ggml-cuda.dll",
+            "audiocpp_cli failed: unsupported Chatterbox language: ja",
+        ))
+        self.assertIn("cannot speak that language", engines._explain(1, log))
+        self.assertNotIn("NVIDIA", engines._explain(1, log))
+        # a real failure of the card is still called that
+        self.assertIn("NVIDIA", engines._explain(1, "audiocpp_cli failed: CUDA initialization failed"))
+        self.assertIn("NVIDIA", engines._explain(1, "no CUDA devices found"))
+        # memory, said on a line above the last word, is still found
+        full = "ggml_cuda_init: found 1 CUDA devices" + chr(10) + "CUDA error: out of memory" + chr(10) + "audiocpp_cli failed: failed to run graph"
+        self.assertEqual(engines._explain(1, full), engines.OUT_OF_VRAM)
+        # and anything else is passed on in the engine's own words
+        self.assertEqual(engines._explain(1, "audiocpp_cli failed: something new and odd"), "something new and odd")
+
 
 if __name__ == "__main__":
     unittest.main()

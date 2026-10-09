@@ -26,6 +26,7 @@ import engines
 import gemini
 import hardware
 import jobs
+import languages
 import paths
 import recommend
 import speech
@@ -251,6 +252,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(state())
                 if path == "/api/jobs":
                     return self._json({"jobs": jobs.snapshot()})
+                if path == "/api/languages":
+                    return self._json(languages.for_page())
             return self._send(404, b"Not found", "text/plain")
         except (BrokenPipeError, ConnectionError):
             pass
@@ -313,7 +316,7 @@ class Handler(BaseHTTPRequestHandler):
             return {"ok": True}
         if path == "/api/generate":
             text, model_id = str(data.get("text") or ""), str(data.get("model") or "")
-            voice_id, language = str(data.get("voice") or ""), "en" if data.get("language") == "en" else "hi"
+            voice_id, language = str(data.get("voice") or ""), str(data.get("language") or "hi")
             if not text.strip():
                 raise UserError("Write something to say first.")
             if model_id not in MODELS or not engines.model_ready(model_id):
@@ -322,6 +325,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise UserError(f"{MODELS[model_id]['name']} needs a voice to copy. Pick a voice first.")
             if voice_id and voices.path_of(voice_id) is None:
                 raise UserError("That voice was not found. Pick another voice.")
+            if not languages.speaks(model_id, language):
+                raise UserError(f"{MODELS[model_id]['name']} does not speak {languages.name(language)}. Pick another model, or another language.")
             store.update(paths.CONFIG, {}, lambda c: {**c, "language": language})
             job = jobs.submit("speak", "Making the voice clip", lambda j: speech.generate(j, text, voice_id, model_id, language))
             return {"job": job.id}
@@ -344,8 +349,11 @@ class Handler(BaseHTTPRequestHandler):
             script = data.get("script") if data.get("script") in ("keep", "devanagari", "english") else "keep"
             store.update(paths.CONFIG, {}, lambda c: {**c, "script": script})
             text = str(data.get("text") or "")
+            language = str(data.get("language") or "")
+            # Hindi and English have their own choices above; any other language is kept as it is written.
+            other = languages.name(language) if languages.known(language) and language not in ("hi", "en") else None
             try:
-                return {"text": gemini.polish(cfg["gemini_key"], cfg["gemini_model"], text, script)}
+                return {"text": gemini.polish(cfg["gemini_key"], cfg["gemini_model"], text, script, other)}
             except gemini.ModelUnavailable as first:
                 # Which models are free, and how much, is Google's to decide and it
                 # changes. Rather than send the user to Settings, try the next
@@ -353,7 +361,7 @@ class Handler(BaseHTTPRequestHandler):
                 others = [m for m in gemini.list_models(cfg["gemini_key"]) if m["free"] and m["id"] != cfg["gemini_model"]][:3]
                 for m in others:
                     try:
-                        out = gemini.polish(cfg["gemini_key"], m["id"], text, script)
+                        out = gemini.polish(cfg["gemini_key"], m["id"], text, script, other)
                     except gemini.ModelUnavailable:
                         continue
                     store.update(paths.CONFIG, {}, lambda c, pick=m["id"]: {**c, "gemini_model": pick})
@@ -383,7 +391,7 @@ class Handler(BaseHTTPRequestHandler):
             if data.get("device") in ("auto", "cpu") and data["device"] != cfg.get("device", "auto"):
                 cfg["device"] = data["device"]
                 changed_device = True
-            if data.get("language") in ("hi", "en"):
+            if languages.known(data.get("language")):
                 cfg["language"] = data["language"]
             return cfg
 

@@ -12,12 +12,14 @@ const store = {
 };
 
 let S = null; // what the server last told us
+let LANGS = null; // which languages each model speaks: {models: {id: [[code, name]]}, india: [codes], dense: [codes]}
 const ui = {
   view: "studio",
   text: store.get("text"),
   voice: store.get("voice"),
   model: store.get("model"),
-  language: "",
+  language: "", // "hi", "en", another language's code, or "other" while none is chosen yet
+  other: store.get("other"), // the last other language that was picked
   script: "",
   undo: null,
   polishing: false,
@@ -96,6 +98,9 @@ function clock(v) {
 }
 const gb = (v) => (Math.round(v * 10) / 10) + " GB";
 const installed = () => (S ? S.models.filter((m) => m.installed) : []);
+const langName = (code) => (LANGS && LANGS.names.get(code)) || code;
+/* Does this model speak the script's language? Yes while no other language is chosen yet. */
+const speaks = (modelId, code) => !LANGS || code === "other" || !!(LANGS.speak[modelId] && LANGS.speak[modelId].has(code));
 const activeJobs = (kind) => (S ? S.jobs.filter((j) => (j.status === "waiting" || j.status === "running") && (!kind || j.kind === kind)) : []);
 
 /* ---------------------------------------------------------------- audio: one player, drawn waveforms */
@@ -235,7 +240,8 @@ const studio = {
           h("div", { class: "node", text: "1" }),
           h("div", { class: "stage-head" }, h("h2", { text: "Script" }), h("span", { class: "spacer" }), h("div", { id: "lang" })),
           h("div", { class: "stage-body" }, box,
-            h("div", { class: "script-foot" }, h("div", { id: "polish" }), h("span", { class: "count", id: "count" })))),
+            h("div", { class: "script-foot" }, h("div", { id: "polish" }), h("span", { class: "count", id: "count" })),
+            h("p", { class: "note", id: "lang-note", style: "margin-top:8px" }))),
         h("section", { class: "stage", id: "stage-voice" },
           h("div", { class: "node", text: "2" }),
           h("div", { class: "stage-head" }, h("h2", { text: "Voice" })),
@@ -264,7 +270,16 @@ const studio = {
     const ready = installed();
     if (!ui.language) ui.language = S.settings.language;
     if (!ui.script) ui.script = S.settings.script;
-    if (!ready.find((m) => m.id === ui.model)) ui.model = ready.length ? ready[0].id : "";
+    const other = ui.language !== "hi" && ui.language !== "en";
+    // the languages on offer: whatever the installed models speak between them
+    const offer = new Map();
+    if (LANGS) for (const m of (ready.length ? ready : S.models)) for (const [code, name] of LANGS.models[m.id] || []) if (code !== "hi" && code !== "en") offer.set(code, name);
+    if (other && ui.language !== "other" && LANGS && !offer.has(ui.language)) ui.language = "other";
+    // the model has to speak the script's language: stay on the chosen one if it does, else move to one that does
+    // (the model the user last picked comes back as soon as the language is one it speaks)
+    const fits = (id) => ready.some((m) => m.id === id && speaks(id, ui.language));
+    const first = ready.find((m) => speaks(m.id, ui.language)) || ready[0];
+    ui.model = [store.get("model"), ui.model].find(fits) || (first ? first.id : "");
     const model = ready.find((m) => m.id === ui.model);
     if (!S.voices.find((v) => v.id === ui.voice)) ui.voice = model && !model.needs_voice && ui.voice === "" && store.get("voice") === "" && store.get("picked") ? "" : (S.voices[0] ? S.voices[0].id : "");
     if (model && model.needs_voice && !ui.voice && S.voices[0]) ui.voice = S.voices[0].id;
@@ -303,9 +318,26 @@ const studio = {
     }
 
     // language
+    const india = LANGS ? LANGS.india.filter((c) => offer.has(c)) : [];
+    const rest = [...offer].filter(([c]) => !india.includes(c)).sort((a, b) => a[1].localeCompare(b[1]));
+    const chooser = other ? h("select", { class: "lang-pick", "aria-label": "Language of the script",
+      onchange: (e) => { ui.language = e.target.value; if (ui.language !== "other") { ui.other = ui.language; store.set("other", ui.language); } studio.update(); } },
+      h("option", { value: "other", text: "Choose a language" }),
+      india.length ? h("optgroup", { label: "Indian languages" }, ...india.map((c) => h("option", { value: c, text: offer.get(c) }))) : "",
+      h("optgroup", { label: india.length ? "All other languages" : "Languages" }, ...rest.map(([c, name]) => h("option", { value: c, text: name })))) : "";
+    if (chooser) chooser.value = ui.language;
     document.getElementById("lang").replaceChildren(h("div", { class: "seg", role: "group", "aria-label": "Language of the script" },
       ...[["hi", "Hindi or Hinglish"], ["en", "English"]].map(([id, label]) =>
-        h("button", { type: "button", "aria-pressed": String(ui.language === id), text: label, onclick: () => { ui.language = id; studio.update(); } }))));
+        h("button", { type: "button", "aria-pressed": String(ui.language === id), text: label, onclick: () => { ui.language = id; studio.update(); } })),
+      LANGS && offer.size ? h("button", { type: "button", "aria-pressed": String(other), text: "Other",
+        onclick: () => { if (!other) { ui.language = offer.has(ui.other) ? ui.other : "other"; studio.update(); } } }) : ""), chooser);
+    const box = document.getElementById("script");
+    if (box) box.placeholder = other && ui.language !== "other"
+      ? "Type or paste what the voice should say, in " + langName(ui.language) + "."
+      : "Type or paste what the voice should say. Hindi, Hinglish or English.";
+    document.getElementById("lang-note").textContent = other
+      ? "Other languages are listed as each model's makers give them. We tested Hindi, Hinglish and English ourselves, so try a short line first."
+      : "";
 
     // polish
     const canPolish = S.settings.has_key && S.settings.gemini_model;
@@ -316,8 +348,10 @@ const studio = {
     mode.value = ui.script;
     document.getElementById("polish").replaceChildren(
       canPolish
-        ? h("div", { class: "polish" },
-          h("button", { class: "btn", type: "button", disabled: ui.polishing, text: ui.polishing ? "Polishing" : "Polish script", onclick: () => studio.polish() }), mode)
+        ? (other
+          ? h("button", { class: "btn", type: "button", disabled: ui.polishing, text: ui.polishing ? "Polishing" : "Polish script", onclick: () => studio.polish() })
+          : h("div", { class: "polish" },
+            h("button", { class: "btn", type: "button", disabled: ui.polishing, text: ui.polishing ? "Polishing" : "Polish script", onclick: () => studio.polish() }), mode))
         : h("a", { class: "btn", href: "#settings", text: "Set up script polishing" }),
       ui.undo !== null ? h("button", { class: "btn quiet", type: "button", text: "Undo polish", onclick: () => studio.setText(ui.undo, true) }) : "");
 
@@ -337,12 +371,17 @@ const studio = {
 
     // models
     document.getElementById("model-chips").replaceChildren(...(ready.length
-      ? ready.map((m) => h("button", {
-        class: "chip", type: "button", "aria-pressed": String(ui.model === m.id),
-        onclick: () => { ui.model = m.id; store.set("model", m.id); studio.update(); },
-      }, m.name, h("small", { text: m.device === "cpu" ? "on the processor" : "on the graphics card" })))
+      ? ready.map((m) => {
+        const can = speaks(m.id, ui.language);
+        return h("button", {
+          class: "chip" + (can ? "" : " off"), type: "button", disabled: !can, "aria-pressed": String(ui.model === m.id),
+          onclick: () => { ui.model = m.id; store.set("model", m.id); studio.update(); },
+        }, m.name, h("small", { text: !can ? "no " + langName(ui.language) : m.device === "cpu" ? "on the processor" : "on the graphics card" }));
+      })
       : [h("a", { class: "chip add", href: "#models", text: "Install a model" })]));
-    document.getElementById("model-note").textContent = model ? model.summary : "";
+    const mute = ready.filter((m) => !speaks(m.id, ui.language)).map((m) => m.name);
+    document.getElementById("model-note").textContent = (model ? model.summary : "")
+      + (mute.length ? " " + mute.join(" and ") + (mute.length > 1 ? " do" : " does") + " not speak " + langName(ui.language) + "." : "");
 
     document.getElementById("stage-voice").classList.toggle("lit", !!ui.voice || (!!model && !model.needs_voice));
     document.getElementById("stage-model").classList.toggle("lit", !!model);
@@ -364,13 +403,16 @@ const studio = {
     if (!model) why = activeJobs("install").length ? "A model is being installed. This will be ready when it finishes." : "Install a model first.";
     else if (!text) why = "Write a script first.";
     else if (text.length > S.limits.script) why = "This script is too long. Keep it under " + S.limits.script.toLocaleString() + " characters.";
+    else if (ui.language === "other") why = "Choose the language of the script.";
+    else if (!speaks(model.id, ui.language)) why = model.name + " does not speak " + langName(ui.language) + ". Pick another model or language.";
     else if (model.needs_voice && !ui.voice) why = "Pick a voice.";
     go.disabled = !!why || speaking;
     const note = document.getElementById("go-note");
     if (why) note.textContent = why;
     else if (speaking) note.textContent = "";
     else {
-      const voice = text.length / 16; // a spoken second is about 16 characters of script
+      // a spoken second is about 16 characters of script, and about 5 where words are written without spaces
+      const voice = text.length / (LANGS && LANGS.dense.includes(ui.language) ? 5 : 16);
       note.textContent = "About " + seconds(voice) + " of voice" + (model.per10 ? ", ready in about " + seconds(Math.max(2, voice * model.per10 / 10)) + " on this PC." : ".");
     }
   },
@@ -434,7 +476,7 @@ const studio = {
           if (await attempt(() => api.post("/api/clips/delete", { id: c.id }))) { row.remove(); refresh(); }
         } })),
       h("p", { class: "clip-text", text: c.text }),
-      h("p", { class: "clip-meta", text: [c.voice, c.model_name, made, c.created].join(", ") }));
+      h("p", { class: "clip-meta", text: [c.voice, c.model_name, c.language && c.language !== "hi" && c.language !== "en" ? (c.language_name || c.language) : "", made, c.created].filter(Boolean).join(", ") }));
     row.dataset.id = c.id;
     return row;
   },
@@ -453,7 +495,7 @@ const studio = {
     if (!text) { toast("Write a script first.", true); return; }
     ui.polishing = true;
     this.update();
-    const out = await attempt(() => api.post("/api/polish", { text, script: ui.script }));
+    const out = await attempt(() => api.post("/api/polish", { text, script: ui.script, language: ui.language }));
     ui.polishing = false;
     if (out && out.text) {
       ui.undo = ui.text;
@@ -946,6 +988,16 @@ async function tick() {
 })();
 
 (async function start() {
+  const langs = await attempt(() => api.get("/api/languages"));
+  if (langs) {
+    langs.names = new Map();
+    langs.speak = {};
+    for (const [id, list] of Object.entries(langs.models)) {
+      langs.speak[id] = new Set(list.map(([code]) => code));
+      for (const [code, name] of list) langs.names.set(code, name);
+    }
+    LANGS = langs;
+  }
   await refresh();
   for (const j of (S ? S.jobs : [])) ui.lastJobs[j.id] = j.status;
   show(location.hash.slice(1) || "studio");

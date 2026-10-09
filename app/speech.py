@@ -11,16 +11,23 @@ import wave
 from pathlib import Path
 
 import engines
+import languages
 import paths
 import store
 import voices
 from catalog import MODELS, PIECE_CHARS, RUNTIMES
 from jobs import UserError
 
-# Sentence enders, including the Hindi danda and double danda (written as code
-# points so this file stays plain ASCII).
-_ENDERS = ".!?" + chr(0x0964) + chr(0x0965)
-_SOFT = ",;:" + chr(0x2014)
+# Sentence enders and softer breaks, in every script the models speak (written
+# as code points so this file stays plain ASCII): the Hindi danda and double
+# danda, the Chinese and Japanese full stop, question and exclamation marks,
+# the Arabic question mark, the Urdu full stop, and the Burmese, Khmer,
+# Ethiopic and Armenian full stops.
+_ENDERS = ".!?" + "".join(chr(c) for c in (0x0964, 0x0965, 0x3002, 0xFF01, 0xFF1F, 0x061F, 0x06D4, 0x104B, 0x17D4, 0x1362, 0x0589))
+_SOFT = ",;:" + "".join(chr(c) for c in (0x2014, 0x060C, 0x061B, 0x3001, 0xFF0C, 0xFF1B, 0xFF1A))
+# In a script without spaces 250 characters would be a minute of speech in one
+# go, four times what the models were measured with.
+DENSE_PIECE_CHARS = 70
 GAP_SECONDS = 0.25
 MAX_SCRIPT = 20000
 HISTORY_KEEP = 500
@@ -71,6 +78,11 @@ def split_script(text: str, limit: int = PIECE_CHARS) -> list[str]:
     if buf:
         pieces.append(buf)
     return pieces
+
+
+def piece_chars(language: str) -> int:
+    """How long a piece of text may be, so that it is about 15 seconds when spoken."""
+    return DENSE_PIECE_CHARS if language in languages.DENSE else PIECE_CHARS
 
 
 def join_wavs(parts: list[Path], out: Path, gap: float = GAP_SECONDS) -> float:
@@ -136,7 +148,7 @@ def generate(job, text: str, voice_id: str, model_id: str, language: str) -> dic
         raise UserError("That voice was not found. Pick another voice.")
     entry = engines.installed()["models"][model_id]
     rt = entry["runtime"]
-    pieces = split_script(text)
+    pieces = split_script(text, piece_chars(language))
     if not pieces:
         raise UserError("There are no words in this script.")
 
@@ -174,6 +186,7 @@ def generate(job, text: str, voice_id: str, model_id: str, language: str) -> dic
         "runtime": rt,
         "device": RUNTIMES[rt]["backend"],
         "language": language,
+        "language_name": languages.name(language),
         "seconds": round(took, 1),
         "audio": round(audio, 1),
         "pieces": len(pieces),
